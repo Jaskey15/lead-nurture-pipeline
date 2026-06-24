@@ -18,7 +18,37 @@ Detailing businesses live and die on speed-to-lead and persistent follow-up, but
 
 ## Architecture
 
-Seven coordinated workflows form a stage machine. A single immutable `entry_date` per lead drives all timing, so a lead's position in the lifecycle is always derivable and never drifts. Scheduled dispatchers send the right message at the right cadence for each stage, and a webhook-driven reply handler reads every inbound response, answers with the LLM, and escalates to a human when it detects intent.
+Seven coordinated workflows form a stage machine, with one immutable `entry_date` driving all timing.
+
+```mermaid
+flowchart TD
+    L["Inbound Lead<br/>form or inquiry"] --> IR["Initial Reachout<br/>AI qualifies and opens the conversation"]
+    IR --> PE["Pipeline Entry<br/>stamps immutable entry_date"]
+    PE --> SM
+
+    subgraph SM["Nurture Stage Machine (entry_date drives all timing)"]
+        direction LR
+        IM["Immediate<br/>day 0 to 1"] -->|daily progression| AN["Active Nurture<br/>days 3, 7, 15"]
+        AN -->|daily progression| MO["Monthly<br/>days 30 to 360"]
+        MO -->|daily progression| EX["Email Nurture<br/>exit"]
+    end
+
+    SM -->|scheduled dispatchers| OUT["Personalized SMS sent"]
+
+    RX["Customer Reply<br/>at any stage"] --> RH["Reply Handler<br/>AI reads every inbound,<br/>detects buying signals"]
+    RH -->|conversational| AIR["AI Reply"]
+    RH -->|buying signal| HO["Human Handoff"]
+
+    OUT -.->|logged| EVAL["Monitoring and Eval<br/>data tables to dashboard:<br/>response by message-day, weekday, stage"]
+    RH -.->|logged| EVAL
+
+    classDef ai fill:#eef2ff,stroke:#6366f1,color:#3730a3;
+    classDef human fill:#fff1f5,stroke:#e11d6b,color:#be1259;
+    classDef eval fill:#0f172a,stroke:#334155,color:#e2e8f0;
+    class IR,RH,AIR ai;
+    class HO human;
+    class EVAL eval;
+```
 
 | Workflow | Trigger | Role |
 |----------|---------|------|
