@@ -1,0 +1,459 @@
+{
+  "id": "TEMPLATE_WORKFLOW_ID",
+  "name": "Lead Nurture - Pipeline Entry",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "YOUR_WEBHOOK_PATH",
+        "options": {}
+      },
+      "id": "9c7bcb2b-fda6-49c0-ad2d-060504bf20f7",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        352,
+        448
+      ],
+      "webhookId": "YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.body.customData.contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "211ae7b9-ca4f-480a-b4ce-e9bfbfb17609",
+      "name": "Get Contact (DND Check)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        576,
+        448
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "dnd-active",
+              "leftValue": "={{ $json.contact?.dndSettings?.SMS?.status }}",
+              "rightValue": "active",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "dnd-permanent",
+              "leftValue": "={{ $json.contact?.dndSettings?.SMS?.status }}",
+              "rightValue": "permanent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "4e4947ba-a5d0-4bd9-b2f2-2b0aba7c91ef",
+      "name": "Check DND Status",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "YOUR_LOCATION_ID"
+            },
+            {
+              "name": "contact_id",
+              "value": "={{ $json.contact.id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1024,
+        256
+      ],
+      "id": "1f85abf3-9034-4065-9af8-aac0de5616a0",
+      "name": "Get Opportunity (DND Branch)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Webhook').item.json.body.customData.contact_id }}/tasks",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b3d11d9a-731f-45ee-a843-3df265202371",
+      "name": "Get Tasks for Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1024,
+        448
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const tasks = $input.item.json.tasks || [];\nreturn tasks.map(task => ({ json: task }));"
+      },
+      "id": "4b190cfb-b15a-4ed3-a54f-fa1e2ed56cf7",
+      "name": "Split Tasks into Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.contactId }}/tasks/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "174276b8-82b8-4c52-900a-699830d888ba",
+      "name": "Delete Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1472,
+        448
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "YOUR_LOCATION_ID"
+            },
+            {
+              "name": "contact_id",
+              "value": "={{ $('Webhook').item.json.body.customData.contact_id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1024,
+        640
+      ],
+      "id": "34d873b3-14cd-474d-8e85-8ab97482b06a",
+      "name": "Get Opportunity ID",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current UTC time\nconst nowMs = Date.now();\nconst oneDayMs = 24 * 60 * 60 * 1000;\n\n// Calculate midnight UTC (no CST offset needed)\nconst midnightUTC = Math.floor(nowMs / oneDayMs) * oneDayMs;\n\n// Convert to YYYY-MM-DD format for GHL\nconst date = new Date(midnightUTC);\nconst year = date.getUTCFullYear();\nconst month = String(date.getUTCMonth() + 1).padStart(2, '0');\nconst day = String(date.getUTCDate()).padStart(2, '0');\nconst dateString = `${year}-${month}-${day}`;\n\n// Get opportunity ID\nconst opportunityId = $input.first().json.opportunities[0].id;\n\nreturn {\n  json: {\n    opportunityId: opportunityId,\n    entryDate: dateString\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        640
+      ],
+      "id": "b0b1c67d-e83a-4d08-91af-b71d1e9a24b8",
+      "name": "Calculate midnight UTC"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $json.opportunityId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customFields\": [\n    {\n      \"id\": \"YOUR_ENTRY_DATE_FIELD_ID\",\n      \"field_value\": \"{{ $json.entryDate }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1472,
+        640
+      ],
+      "id": "b9ca6af4-f459-405f-b88f-c6090ae30a10",
+      "name": "Set Entry Date",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $json.opportunities[0].id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "pipelineStageId",
+              "value": "YOUR_DND_PIPELINE_STAGE_ID"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "70555a64-0655-4497-b440-3a0e513d17d5",
+      "name": "Move to Email Nurture DND",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1248,
+        256
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Contact (DND Check)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Contact (DND Check)": {
+      "main": [
+        [
+          {
+            "node": "Check DND Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DND Status": {
+      "main": [
+        [
+          {
+            "node": "Get Opportunity (DND Branch)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Tasks for Opportunity",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Opportunity ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Opportunity (DND Branch)": {
+      "main": [
+        [
+          {
+            "node": "Move to Email Nurture DND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tasks for Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Split Tasks into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Tasks into Items": {
+      "main": [
+        [
+          {
+            "node": "Delete Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Opportunity ID": {
+      "main": [
+        [
+          {
+            "node": "Calculate midnight UTC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate midnight UTC": {
+      "main": [
+        [
+          {
+            "node": "Set Entry Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": ""
+  }
+}

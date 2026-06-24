@@ -1,0 +1,738 @@
+{
+  "id": "TEMPLATE_WORKFLOW_ID",
+  "name": "Lead Nurture - Initial Reachout",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "YOUR_WEBHOOK_PATH",
+        "options": {}
+      },
+      "id": "92a40d46-7be5-4e79-91be-fea0ec683682",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        -208
+      ],
+      "webhookId": "YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract customer data from GHL webhook\nconst body = $input.item.json.body;\nconst customData = body.customData || {};\nreturn {\n  json: {\n    contact_id: body.contact_id,\n    first_name: customData.first_name,\n    asset_description: customData.asset_description,\n    vehicle: customData.vehicle,\n    services_interested: customData.services_interested,\n    services_interested_check: customData.services_interested_check,\n    desired_packages: customData.desired_packages,\n    additional_info: customData.message_notes,\n  }\n};"
+      },
+      "id": "1df7809d-4a3d-40f6-a21b-c1eccb9936a0",
+      "name": "Parse Customer Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/conversations/{{ $json.conversations[0].id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b4f57c30-acdd-472d-9235-6d44d41d5715",
+      "name": "Get Conversation History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -336,
+        -208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format conversation history for GPT-5 (SMS ONLY)\nconst messagesData = $('Get Conversation History').item.json.messages || {};\nconst allMessages = messagesData.messages || [];\nconst customerData = $('Parse Customer Data').item.json;\n\n// Filter to SMS messages only (exclude emails, calls, etc.)\nconst smsMessages = allMessages.filter(msg => \n  msg.messageType === 'TYPE_SMS' || msg.messageType === 'SMS'\n);\n\n// Reverse to chronological order \nconst sortedMessages = [...smsMessages].reverse();\n\n// Format as conversation history with line breaks between messages\nconst conversationHistory = sortedMessages.map(msg => {\n  const role = msg.direction === 'inbound' ? customerData.first_name : '{{YOUR_AI_AGENT_NAME}}';\n  let content = msg.body || '';\n  \n  // Handle attachments (prevents blank messages when customers send images)\n  if (msg.attachments && msg.attachments.length > 0 && !content) {\n    content = '[Customer sent an image]';\n  }\n  \n  return `${role}: ${content}`;\n}).join('\\n\\n');\n\n// Helper function to provide fallback for empty/missing values\nconst notProvided = (value) => value || '(not provided)';\n\nreturn {\n  json: {\n    conversation_history: conversationHistory,\n    contact_id: customerData.contact_id,\n    first_name: notProvided(customerData.first_name),\n    asset_description: notProvided(customerData.asset_description),\n    vehicle: notProvided(customerData.vehicle),\n    services_interested: notProvided(customerData.services),\n    services_interested_check: notProvided(customerData.services_interested_check),\n    desired_packages: notProvided(customerData.desired_packages),\n    additional_info: notProvided(customerData.additional_info),\n  }\n};"
+      },
+      "id": "ba9e0719-1e98-4a91-b608-305c8c26cdc1",
+      "name": "Format History for GPT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://services.leadconnectorhq.com/contacts/\" + $('Format History for GPT').item.json.contact_id + \"/tags\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"tags\": [\"chatbot handoff\"]\n}",
+        "options": {}
+      },
+      "id": "19fa7a9d-721c-43fe-a675-b33e782914fe",
+      "name": "Add Handoff Tag",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        -240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "SMS"
+            },
+            {
+              "name": "contactId",
+              "value": "={{ $('Format History for GPT').item.json.contact_id }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $('Trim Message').item.json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8fffd6dd-d96f-4e55-a39a-039c742bb02d",
+      "name": "Send Handoff Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        -240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Chatbot Flow\n\n1. Webhook receives customer message\n2. Parse customer data from GHL\n3. HTTP GET conversation history\n4. Format history for GPT-5 context\n5. GPT-5 generates response\n   - Can call trigger_handoff function\n6. IF node checks for handoff\n7a. Normal: Send SMS response\n7b. Handoff: Add tag + Send message\n8. Respond to webhook\n",
+        "height": 280,
+        "width": 308,
+        "color": 4
+      },
+      "id": "7caf5d05-12dc-4427-a532-e74745f9a4e6",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -992,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Key Points\n\n✅ All GHL interactions via HTTP\n✅ Full conversation history every time\n✅ GPT-5 can trigger handoff via function\n✅ Explicit routing (IF node)\n✅ 4x cheaper than MCP approach\n\n**Next Steps:**\n1. Add your full system prompt\n2. Configure GHL API credentials\n3. Test with real webhook data",
+        "height": 284,
+        "width": 320,
+        "color": 5
+      },
+      "id": "a7c5f34f-295e-4d6a-8b92-ee8ce33465d8",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://services.leadconnectorhq.com/conversations/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "contactId",
+              "value": "={{ $json.contact_id }}"
+            },
+            {
+              "name": "locationId",
+              "value": "YOUR_LOCATION_ID"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -560,
+        -208
+      ],
+      "id": "1225820b-e68f-45d1-9531-48b06cc92c90",
+      "name": "Find Conversation",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Strip ##HANDOFF## marker from LLM response\nconst llmResponse = $input.item.json.text || '';\n\nreturn {\n  json: {\n    ...$input.item.json,\n    text: llmResponse.replace('##HANDOFF##', '').trim()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -240
+      ],
+      "id": "148b43fe-d08e-4b28-a696-90cc2da2f04f",
+      "name": "Trim Message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all messages \nconst messages = $input.item.json.messages.messages || [];\n\nif (!messages || messages.length === 0) {\n  return { json: { shouldStop: false, reason: 'no_messages' } };\n}\n\n// Known human userIds from GHL team ({{YOUR_BUSINESS_NAME}})\nconst HUMAN_IDS = [\n  'YOUR_EMPLOYEE_2_USER_ID', // {{YOUR_EMPLOYEE_NAME}}\n  'YOUR_EMPLOYEE_1_USER_ID', // {{YOUR_EMPLOYEE_NAME}} ({{YOUR_DOMAIN}})\n  'YOUR_EMPLOYEE_3_USER_ID', // {{YOUR_EMPLOYEE_NAME}} ({{YOUR_DOMAIN}})\n  'YOUR_EMPLOYEE_4_USER_ID', // {{YOUR_EMPLOYEE_NAME}}\n];\n\n// Check if ANY call exists (inbound or outbound, regular or IVR)\n// The AI agent never makes calls, so any call = human intervention\nconst hasHumanCall = messages.some(msg => \n  msg.messageType === 'TYPE_CALL' || msg.messageType === 'TYPE_IVR_CALL'\n);\n\n// Check if ANY human sent an SMS (must check userId since {{YOUR_AI_AGENT_NAME}} also sends SMS)\nconst hasHumanSMS = messages.some(msg => \n  msg.messageType === 'TYPE_SMS' && \n  msg.direction === 'outbound' &&\n  msg.userId && \n  HUMAN_IDS.includes(msg.userId)\n);\n\nconst shouldStop = hasHumanCall || hasHumanSMS;\n\nlet reason = 'none';\nif (hasHumanCall) reason = 'human_call_detected';\nif (hasHumanSMS) reason = 'human_sms_detected';\nif (hasHumanCall && hasHumanSMS) reason = 'multiple_human_interventions';\n\nreturn { \n  json: { \n    shouldStop,\n    reason,\n    hasHumanCall,\n    hasHumanSMS\n  } \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        -208
+      ],
+      "id": "cb4f039f-d45d-4c18-80d6-2695989c9ab5",
+      "name": "Check Human Intervention"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d8aaf1ea-033f-4816-ba7e-1dd9448c709b",
+              "leftValue": "={{ $json.shouldStop }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        -208
+      ],
+      "id": "aa963690-789a-4a64-8d85-0c292d2fe7ea",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.text }}",
+                    "rightValue": "##HANDOFF##",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "08500910-22a9-4ba0-9562-84f519315699"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Handoff"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "000ab6bb-52f6-4498-b895-3980609c1d06",
+                    "leftValue": "={{ $json.text }}",
+                    "rightValue": "##STOP##",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Stop"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        1120,
+        -16
+      ],
+      "id": "2b01cbd6-164a-4699-8664-df4fea7e8b61",
+      "name": "Check Stop or Handoff"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://services.leadconnectorhq.com/contacts/\" + $('Format History for GPT').item.json.contact_id + \"/tags\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"tags\": [\"chatbot handoff\"]\n}",
+        "options": {}
+      },
+      "id": "f4df35f0-b201-4b4d-a5bf-99ba6157387c",
+      "name": "Add Handoff Tag (stop)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        -48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "SMS"
+            },
+            {
+              "name": "contactId",
+              "value": "={{ $('Format History for GPT').item.json.contact_id }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $('Generate Message').item.json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e42425ef-926c-4e56-8c70-cd285ee3d7c7",
+      "name": "Message Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://services.leadconnectorhq.com/contacts/\" + $('Parse Customer Data').item.json.contact_id + \"/tags\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"tags\": [\"chatbot handoff\"]\n}",
+        "options": {}
+      },
+      "id": "60de33af-e708-4335-aef9-c215b56491a3",
+      "name": "Add Handoff Tag (Human Intervention)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        336,
+        -304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Customer name: {{ $('Format History for GPT').item.json.first_name }}\nAsset: {{ $('Format History for GPT').item.json.asset_description }}\nVehicle: {{ $('Format History for GPT').item.json.vehicle }}\nServices Interested: {{ $('Format History for GPT').item.json.services_interested }}\nServices Interested Check: {{ $('Format History for GPT').item.json.services_interested_check }}\nDesired Packages: {{ $('Format History for GPT').item.json.desired_packages }}\nAdditional Info: {{ $('Format History for GPT').item.json.additional_info }}\n\nConversation History:\n\n{{ $('Format History for GPT').item.json.conversation_history }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a friendly office assistant helping qualify new leads who submitted a form. Your job is to have a brief, natural conversation to understand what the customer needs, then hand off to the sales team for pricing and scheduling.\n\nGOAL: Gather key context about the customer's needs through casual conversation (3-5 exchanges), then transition to a sales rep.\n\nSTYLE:\n- 2-3 sentences max, like texting a friend\n- Plain text only. No bold, italics, headers, code blocks, or em-dashes (use commas/periods instead)\n- End with an open question unless handing off\n\nBEHAVIORS:\n- Use form data naturally in responses. Never re-ask what they already provided\n- Hand off immediately for pricing, scheduling, or technical questions (output ##HANDOFF##)\n- Output ##NO-REPLY## when customer declines or conversation ends naturally\n- Output ##STOP## when customer requests a service you don't offer\n- Never quote specific dollar amounts. Let the sales rep handle pricing\n- Skip standalone acknowledgments (\"Got it\", \"Nice\") and jump straight to substance\n\nTONE: Friendly and approachable but not salesy. Like a knowledgeable coworker helping out. Let your services speak for themselves.\n\nCUSTOMIZE BELOW: Add your business info, team details, service catalog, service area rules, and conversation examples."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        768,
+        0
+      ],
+      "id": "ee77f017-595d-471f-8d4c-30fee6c753f5",
+      "name": "Generate Message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate business hours context (for handoff timing)\nconst now = new Date().toLocaleString('en-US', { timeZone: 'YOUR_TIMEZONE' });\nconst date = new Date(now);\nconst day = date.getDay();\nconst hour = date.getHours();\nlet timeContext;\nif (day === 0 || day === 6 || (day === 5 && hour >= 17)) {\n  timeContext = \"WEEKEND\";\n} else if (hour >= 17) {\n  timeContext = \"AFTER_HOURS\";\n} else {\n  timeContext = \"BUSINESS_HOURS\";\n}\n\nreturn { timeContext };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        0
+      ],
+      "id": "42ccb7f8-8f63-4cc0-b6ff-1bdf00cd2ef0",
+      "name": "Calculate Business Hours"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-chat-latest",
+          "mode": "list",
+          "cachedResultName": "gpt-5-chat-latest"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "frequencyPenalty": 0.2,
+          "presencePenalty": 0.2,
+          "temperature": 0.3,
+          "maxRetries": 2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        224
+      ],
+      "id": "3e9629cf-5b41-4d8c-99c7-934359266ef9",
+      "name": "GPT-5-Chat",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Customer Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Customer Data": {
+      "main": [
+        [
+          {
+            "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Check Human Intervention",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Handoff Tag": {
+      "main": [
+        [
+          {
+            "node": "Send Handoff Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format History for GPT": {
+      "main": [
+        [
+          {
+            "node": "Calculate Business Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Conversation": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trim Message": {
+      "main": [
+        [
+          {
+            "node": "Add Handoff Tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Human Intervention": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Add Handoff Tag (Human Intervention)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format History for GPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Stop or Handoff": {
+      "main": [
+        [
+          {
+            "node": "Trim Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Handoff Tag (stop)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Message": {
+      "main": [
+        [
+          {
+            "node": "Check Stop or Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Business Hours": {
+      "main": [
+        [
+          {
+            "node": "Generate Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5-Chat": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": ""
+  }
+}

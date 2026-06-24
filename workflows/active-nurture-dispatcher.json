@@ -1,0 +1,823 @@
+{
+  "id": "TEMPLATE_WORKFLOW_ID",
+  "name": "Lead Nurture - Active Nurture Dispatcher",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5,35 9-17 * * *"
+            }
+          ]
+        }
+      },
+      "id": "7c5801ca-0318-4209-97ae-94e198c7c531",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $('Filter Opportunities by Date').item.json.contactId }}/notes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa9c51f0-4466-4f60-b4ba-07d59157f9c3",
+      "name": "Get Opportunity Notes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2016,
+        -112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-chat-latest",
+          "mode": "list",
+          "cachedResultName": "gpt-5-chat-latest"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "frequencyPenalty": 0.2,
+          "maxTokens": 500,
+          "presencePenalty": 0.2,
+          "temperature": 0.5,
+          "maxRetries": 2
+        }
+      },
+      "id": "662fc0ba-16cc-4b61-bc19-eba98f03b418",
+      "name": "GPT-5-Chat",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2768,
+        112
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/conversations/{{ $json.conversations[0].id }}/messages ",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "TYPE_SMS"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1568,
+        -112
+      ],
+      "id": "2870a1cd-28fb-4830-9c4d-58909555d65c",
+      "name": "Get SMS Messages",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/contacts/{{ $json.contactId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        896,
+        -112
+      ],
+      "id": "a912fd43-315b-4252-8e9e-85a2bc11f8a8",
+      "name": "Get Contact Data",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Field IDs\nconst ENTRY_DATE_FIELD_ID = 'YOUR_ENTRY_DATE_FIELD_ID';\nconst LAST_SENT_FIELD_ID = 'YOUR_LAST_SENT_FIELD_ID';\n\n// UTC timezone calculations\nconst ONE_DAY_MS = 24 * 60 * 60 * 1000;\nconst nowMs = Date.now();\n\n// Calculate today at midnight UTC\nconst todayMidnightUTC = Math.floor(nowMs / ONE_DAY_MS) * ONE_DAY_MS;\n\n// Message days\nconst MESSAGE_DAYS = [3, 7, 15];\n\n// Collect opportunities from ALL pages\nconst items = $input.all();\nlet allOpportunities = [];\nfor (const item of items) {\n  const pageOpportunities = item.json.opportunities || [];\n  allOpportunities = allOpportunities.concat(pageOpportunities);\n}\n\n// DEDUPLICATION: Remove duplicate opportunities by ID\nconst uniqueOpportunities = [];\nconst seenIds = new Set();\nfor (const opp of allOpportunities) {\n  if (!seenIds.has(opp.id)) {\n    seenIds.add(opp.id);\n    uniqueOpportunities.push(opp);\n  }\n}\n\n// Filter opportunities\nconst filtered = uniqueOpportunities.filter(opp => {\n  const customFields = opp.customFields || [];\n  \n  // Find entry date\n  const entryField = customFields.find(f => f.id === ENTRY_DATE_FIELD_ID);\n  if (!entryField || !entryField.fieldValueDate) {\n    return false;\n  }\n  \n  // Entry date is midnight UTC (stored by GHL)\n  const entryMidnightUTC = entryField.fieldValueDate;\n  \n  // Calculate days since entry (both are midnight UTC)\n  const daysSinceEntry = Math.floor((todayMidnightUTC - entryMidnightUTC) / ONE_DAY_MS);\n  \n  // Check if today is a message day\n  if (!MESSAGE_DAYS.includes(daysSinceEntry)) {\n    return false;\n  }\n  \n  // Find last sent date\n  const lastSentField = customFields.find(f => f.id === LAST_SENT_FIELD_ID);\n  if (!lastSentField || !lastSentField.fieldValueDate) {\n    return true; // No last sent date, so send message\n  }\n  \n  // Last sent is also midnight UTC\n  const lastSentMidnightUTC = lastSentField.fieldValueDate;\n  \n  // Compare calendar dates (safer than raw timestamp comparison)\n  const lastSentDate = new Date(lastSentMidnightUTC).toISOString().split('T')[0];\n  const todayDate = new Date(todayMidnightUTC).toISOString().split('T')[0];\n  return lastSentDate !== todayDate;\n});\n\n// Single summary log for monitoring\nconsole.log(`Active Nurture Dispatcher: ${filtered.length} messages scheduled (from ${uniqueOpportunities.length} total opportunities)`);\n\n// Return in n8n format\nreturn filtered.map(opp => ({ json: opp }));"
+      },
+      "id": "0021fee7-317c-406e-b9af-d152a5049c59",
+      "name": "Filter Opportunities by Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get messages array from API response\nconst messagesData = $input.item.json.messages;\n\n// Handle cases where there are no messages\nif (!messagesData || !messagesData.messages || messagesData.messages.length === 0) {\n  return {\n    json: {\n      formatted_sms_history: \"(No previous conversation history)\"\n    }\n  };\n}\n\n// Get messages array - API returns newest first, we want oldest first\nlet messages = messagesData.messages;\n\n// Limit to 20 most recent messages (take last 20 from the array)\nif (messages.length > 20) {\n  messages = messages.slice(0, 20);\n}\n\n// Reverse to get chronological order (oldest → newest)\nmessages.reverse();\n\n// Format each message\nconst formattedMessages = messages.map(msg => {\n  // Determine sender label\n  const sender = msg.direction === 'outbound' ? 'YOUR_BUSINESS_NAME' : 'CUSTOMER';\n  \n  // Format date - just month, day, year\n  const date = new Date(msg.dateAdded);\n  const month = date.toLocaleString('en-US', { month: 'short' });\n  const day = date.getDate();\n  const year = date.getFullYear();\n  \n  const formattedDate = `[${month} ${day}, ${year}]`;\n  \n  // Return formatted message\n  return `${formattedDate} ${sender}: ${msg.body}`;\n});\n\n// Join with newlines\nconst formatted_sms_history = formattedMessages.join('\\n');\n\nreturn {\n  json: {\n    formatted_sms_history\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -112
+      ],
+      "id": "96d55b71-e8e6-49d6-9ae1-c5e4bdb73d27",
+      "name": "Format Conversation History"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get notes array from API response\nconst notesData = $input.item.json.notes;\n\n// Handle cases where there are no notes\nif (!notesData || notesData.length === 0) {\n  return {\n    json: {\n      formatted_customer_notes: \"(No previous calls or notes)\"\n    }\n  };\n}\n\n// Notes come from API newest first, reverse to chronological order\nconst notes = [...notesData].reverse();\n\n// Format each note - extract only relevant sections\nconst formattedNotes = notes.map(note => {\n  const date = new Date(note.dateAdded);\n  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });\n  \n  let noteText = note.bodyText.trim();\n  \n  // Find where unwanted sections start (new clean format)\n  const performanceIndex = noteText.indexOf('📊 PERFORMANCE NOTES');\n  const followupIndex = noteText.indexOf('💬 FOLLOW-UP SMS DRAFT');\n  \n  // Find the earliest cutoff point\n  let cutoffIndex = -1;\n  if (performanceIndex !== -1 && followupIndex !== -1) {\n    cutoffIndex = Math.min(performanceIndex, followupIndex);\n  } else if (performanceIndex !== -1) {\n    cutoffIndex = performanceIndex;\n  } else if (followupIndex !== -1) {\n    cutoffIndex = followupIndex;\n  }\n  \n  // Cut off unwanted sections\n  let filteredText = cutoffIndex !== -1 \n    ? noteText.substring(0, cutoffIndex).trim()\n    : noteText;\n  \n  // Clean up: remove emojis from section headers, keep structure intact\n  filteredText = filteredText\n    .replace(/⛵ SERVICE & CONTEXT/g, 'SERVICE & CONTEXT')\n    .replace(/🚗 VEHICLE & CONTEXT/g, 'VEHICLE & CONTEXT')\n    .replace(/🎯 GOALS & PRIORITIES/g, 'GOALS & PRIORITIES')\n    .replace(/💰 OFFER & PRICING/g, 'OFFER & PRICING')\n    .replace(/➡️ NEXT STEPS/g, 'NEXT STEPS')\n    .replace(/\\n{3,}/g, '\\n\\n') // Collapse excessive newlines\n    .trim();\n  \n  return `${dateStr}\\n${filteredText}`;\n});\n\nconst formatted_customer_notes = formattedNotes.join('\\n\\n');\n\nreturn {\n  json: {\n    formatted_customer_notes\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        -112
+      ],
+      "id": "f74cf4d6-3ab1-47f0-879c-96108e7b1b1d",
+      "name": "Format Customer Notes"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get all formatted data from previous nodes\nconst customerData = $('Gather Customer Data').item.json;\nconst smsHistory = $('Format Conversation History').item.json.formatted_sms_history;\nconst customerNotes = $('Format Customer Notes').item.json.formatted_customer_notes;\n\n// Get the opportunity data to determine day number\nconst opportunity = $('Filter Opportunities by Date').item.json;\n\n// Get current promo from global variable\nconst currentPromo = $vars.CURRENT_PROMO || null;\n\n// Calculate days since entry_date to determine message day\nconst ENTRY_DATE_FIELD_ID = 'YOUR_ENTRY_DATE_FIELD_ID';\nconst entryDateField = opportunity.customFields?.find(f => f.id === ENTRY_DATE_FIELD_ID);\nconst entryDateMs = entryDateField ? parseInt(entryDateField.fieldValueDate) : null;\n\nlet dayNumber = null;\nif (entryDateMs) {\n  const nowMs = Date.now();\n  const daysSinceEntry = Math.floor((nowMs - entryDateMs) / (24 * 60 * 60 * 1000));\n  dayNumber = daysSinceEntry;\n}\n\n// Build customer info section\nconst customerInfoLines = [];\ncustomerInfoLines.push(`Name: ${customerData.first_name || 'Not provided'}`);\n\nif (customerData.asset_description) {\n  customerInfoLines.push(`Asset: ${customerData.asset_description}`);\n}\n\nif (customerData.vehicle) {\n  customerInfoLines.push(`Vehicle: ${customerData.vehicle}`);\n}\n\n// Build service interest section - show both if both exist\nconst serviceInterests = [];\nif (customerData.services_interested_check) {\n  serviceInterests.push(customerData.services_interested_check);\n}\nif (customerData.services_interested) {\n  serviceInterests.push(customerData.services_interested);\n}\nif (serviceInterests.length > 0) {\n  customerInfoLines.push(`Service Interest: ${serviceInterests.join(', ')}`);\n}\n\nif (customerData.desired_packages) {\n  customerInfoLines.push(`Package Interest: ${customerData.desired_packages}`);\n}\n\nif (customerData.notes) {\n  customerInfoLines.push(`Notes: ${customerData.notes}`);\n}\n\nconst customerInfo = customerInfoLines.join('\\n');\n\n// Build day-specific message guidance\nlet messageGuidance = '';\nif (dayNumber === 3) {\n  messageGuidance = `Day 3 - Casual status check. Ask if they're still interested or have questions. Keep it light and easy to respond to.`;\n} else if (dayNumber === 7) {\n  messageGuidance = `Day 7 - Reference their specific situation or any concerns mentioned in notes. If there is no specific context, ask about their decision timeline or if anything has come up.`;\n} else if (dayNumber === 15) {\n  messageGuidance = `Day 15 - Ask directly about their decision or what's holding them back. Reference budget concerns, timing, or comparison shopping if mentioned in notes. More direct tone.`;\n} else {\n  messageGuidance = `Day ${dayNumber} - Brief, casual check-in. Vary your question structure from previous messages.`;\n  console.warn(`Unexpected day number: ${dayNumber} for opportunity ${opportunity.id}`);\n}\n\n// Build the complete user prompt\n// Structure: Customer Info → Current Promo → Customer Notes → Conversation History → Message Guidance\nconst userPrompt = `Customer Info:\n${customerInfo}\n${currentPromo ? `\\nCurrent Promo:\\n${currentPromo}\\n` : ''}\n${customerNotes !== '(No previous calls or notes)' ? `Customer Notes:\\n${customerNotes}\\n` : 'No previous calls or notes.\\n'}\nConversation History:\n${smsHistory}\n\nMessage Guidance:\n${messageGuidance}`;\n\nreturn {\n  json: {\n    chatInput: userPrompt,\n    contact_id: customerData.contact_id,\n    opportunity_id: opportunity.id,\n    day_number: dayNumber,\n    current_promo: currentPromo // Include for potential logging/debugging\n  }\n};"
+      },
+      "id": "bad8e19a-4a66-46c3-a1f7-59f7b88503c3",
+      "name": "Build User Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a friendly office assistant checking in with leads who showed interest but haven't moved forward. Some talked to the sales team, some never responded. Your job is to check in casually, like texting a friend who asked you about something a while back.\n\nGOAL: Send one short message that references what you know and makes it easy to respond. The user prompt includes day-specific guidance (e.g., Day 3, Day 7, Day 15) to help you calibrate tone.\n\nSTYLE:\n- 1-2 sentences max, like texting a friend\n- Plain text only. No bold, italics, headers, code blocks, or em-dashes (use commas/periods instead)\n\nBEHAVIORS:\n- Only introduce yourself if there's been zero previous contact\n- Reference customer context naturally but vary your approach across messages\n- Avoid repeating the same question patterns (\"Still thinking about...\") in consecutive messages\n- Mix up openings: questions vs. statements, direct vs. indirect, status checks vs. decision questions\n- Use customer's name sparingly (once every 2-3 messages max)\n- Never quote specific dollar amounts from notes or history\n- Never reference service details, availability, or value propositions\n- If a current promo is provided, mention it naturally only when relevant\n- Output ##NO-REPLY## if they decline\n\nTONE: Casual and brief, like checking in with a friend. Never explain value or benefits. Just create an easy opening for them to respond.\n\nCUSTOMIZE BELOW: Add your business identity, service catalog, and examples relevant to your business."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        2688,
+        -112
+      ],
+      "id": "0f06449c-695d-4b64-ab72-76cc454989a7",
+      "name": "Generate Message",
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $('Build User Prompt').item.json.opportunity_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customFields\": [\n    {\n      \"id\": \"YOUR_LAST_SENT_FIELD_ID\",\n      \"field_value\": \"{{ $json.lastSentDate }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3488,
+        -112
+      ],
+      "id": "4de481e3-3233-4614-942b-951dd7d1d833",
+      "name": "Update Last Message Sent Date",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/conversations/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "locationId",
+              "value": "={{ $vars.GHL_LOCATION_ID }}"
+            },
+            {
+              "name": "contactId",
+              "value": "={{ $json.contact_id }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "366f9f1e-1b82-41d4-931e-1a2406b9299a",
+      "name": "Find Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        -112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Simple UTC midnight calculation\nconst nowMs = Date.now();\nconst oneDayMs = 24 * 60 * 60 * 1000;\n\nconst midnightUTC = Math.floor(nowMs / oneDayMs) * oneDayMs;\n\n// Convert to YYYY-MM-DD\nconst date = new Date(midnightUTC);\nconst year = date.getUTCFullYear();\nconst month = String(date.getUTCMonth() + 1).padStart(2, '0');\nconst day = String(date.getUTCDate()).padStart(2, '0');\nconst lastSentDate = `${year}-${month}-${day}`;\n\nreturn {\n  json: {\n    ...($input.item.json),\n    lastSentDate: lastSentDate\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        -112
+      ],
+      "id": "d08a3f59-245b-4f64-9d93-d8284cdd6283",
+      "name": "Calculate midnight UTC",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "={{$vars.GHL_LOCATION_ID}}"
+            },
+            {
+              "name": "pipeline_stage_id",
+              "value": "YOUR_ACTIVE_NURTURE_STAGE_ID"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "startAfter",
+                    "value": "={{ $response.body.meta?.startAfter || '' }}"
+                  },
+                  {
+                    "name": "startAfterId",
+                    "value": "={{ $response.body.meta?.startAfterId || '' }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.meta || !$response.body.meta.startAfterId }}"
+            }
+          }
+        }
+      },
+      "id": "2ef26482-643c-4063-ae27-154b196be7c7",
+      "name": "Get Active Opportunites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        -112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/conversations/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-04-15"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "SMS"
+            },
+            {
+              "name": "contactId",
+              "value": "={{ $('Build User Prompt').item.json.contact_id }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c6a20d83-48e9-47c4-a145-dd282a2c9d86",
+      "name": "Send Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        -112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get data from Build User Prompt (earlier in the workflow)\nconst promptData = $('Build User Prompt').item.json;\n\n// Prepare event data for this contact\nreturn {\n  timestamp: Date.now(),\n  contact_id: promptData.contact_id,\n  event_type: 'message_sent',\n  pipeline_stage: 'Active Nurture',\n  days_since_entry: promptData.day_number,\n  weekday: new Date().toLocaleDateString('en-US', { weekday: 'long' })\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3712,
+        -112
+      ],
+      "id": "b4fb6e65-3756-47ff-836e-6587eb427de7",
+      "name": "Prepare Event Data"
+    },
+    {
+      "parameters": {
+        "content": "## Purpose\nSends scheduled nurture messages to opportunities in **\"Active Nurture\"** pipeline on specific message days (3, 7, 15).\n\n## Execution Schedule\n⏰ **Every 30 minutes** from 9:05am-5:35pm CT\n📊 Processes **up to 10 opportunities** per run (180 per day)\n\n## Data Flow\n### 1️⃣ Fetch & Filter\n- Query GHL for all opportunities in \"Active Nurture\" stage\n- Calculate days since `entry_date` field\n- Filter to only opportunities on message days (3, 7, 15)\n- Deduplicate across pagination\n- Skip if already messaged today (via `last_message_sent` field)\n- Limit to 10 per execution\n\n### 2️⃣ Gather Context\n- **Contact details:** name, vehicle, service interest, packages\n- **Conversation history:** last 20 SMS messages\n- **Opportunity notes:** call summaries (cleaned of performance/follow-up sections)\n- **Current promo:** from `$vars.CURRENT_PROMO`\n- **Day number:** used for day-specific message guidance\n\n### 3️⃣ Generate & Send\n- Build user prompt with day-specific guidance:\n  - **Day 3:** Casual status check\n  - **Day 7:** Reference specific situation/concerns\n  - **Day 15:** Direct decision question, mention barriers\n- GPT-5 creates contextual nurture message\n- Send via GHL SMS API\n- Update `last_message_sent` to today's date (prevents duplicates)\n\n### 4️⃣ Logging\n- Insert event data into `nurture_evals` table for monitoring\n\n## Key Features\n✅ **Day-based filtering** - only sends on days 3, 7, 15  \n✅ **Day-specific guidance** - message tone evolves over time  \n✅ **Deduplication** prevents double-sends  \n✅ **Pagination** handles large opportunity lists  \n✅ **Promo awareness** (auto-includes when available)",
+        "height": 1040,
+        "width": 592,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        256
+      ],
+      "typeVersion": 1,
+      "id": "3a5b1ec5-a80b-42ee-9aae-1ebdb1d77f7f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Map Custom Fields - Extract and format contact data\nconst customFieldMapping = {\n  'YOUR_TAG_1_ID': 'tag_1',\n  'YOUR_TAG_2_ID': 'vehicle',\n  'YOUR_NOTES_FIELD_ID': 'message',\n  'YOUR_SERVICES_INTERESTED_FIELD_ID': 'services_interested',\n  'YOUR_DESIRED_PACKAGES_FIELD_ID': 'desired_packages',\n  'YOUR_SERVICES_CHECK_FIELD_ID': 'services_interested_check'\n};\n\nconst contact = $json.contact;\nconst opportunity = $('Limit 10').item.json;\n\nconst output = {\n  contact_id: contact.id,\n  opportunity_id: opportunity.id,\n  first_name: contact.firstName || 'unknown' \n};\n\n// Map custom fields - handle both strings and arrays\nif (contact.customFields && Array.isArray(contact.customFields)) {\n  contact.customFields.forEach(field => {\n    const mappedName = customFieldMapping[field.id];\n    if (mappedName && field.value) {\n      // Handle arrays (checkboxes, multi-select)\n      if (Array.isArray(field.value)) {\n        if (field.value.length > 0) {\n          output[mappedName] = field.value.join(', ');\n        }\n      }\n      // Handle strings\n      else if (typeof field.value === 'string' && field.value.trim() !== '') {\n        output[mappedName] = field.value.trim();\n      }\n      // Handle other types (numbers, booleans, etc.)\n      else if (field.value !== null && field.value !== undefined) {\n        output[mappedName] = field.value;\n      }\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -112
+      ],
+      "id": "18c2ea86-c0a8-44bb-893e-89a81dacd0f9",
+      "name": "Gather Customer Data"
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -112
+      ],
+      "id": "dc96b573-1c1b-40c3-8ed6-89d8850a85c2",
+      "name": "Limit 10"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_DATATABLE_ID",
+          "mode": "list",
+          "cachedResultName": "nurture_evals",
+          "cachedResultUrl": "/projects/YOUR_N8N_PROJECT_ID/datatables/YOUR_DATATABLE_ID"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $json.timestamp }}",
+            "contact_id": "={{ $json.contact_id }}",
+            "event_type": "={{ $json.event_type }}",
+            "days_since_entry": "={{ $json.days_since_entry }}",
+            "pipeline_stage": "={{ $json.pipeline_stage }}",
+            "weekday": "={{ $json.weekday }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "contact_id",
+              "displayName": "contact_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "days_since_entry",
+              "displayName": "days_since_entry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "event_type",
+              "displayName": "event_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "pipeline_stage",
+              "displayName": "pipeline_stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "weekday",
+              "displayName": "weekday",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "optimizeBulk": false
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        3936,
+        -112
+      ],
+      "id": "5da8254d-26d5-49fc-bda9-53379bafb859",
+      "name": "Insert into Evals"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Opportunites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Opportunity Notes": {
+      "main": [
+        [
+          {
+            "node": "Format Customer Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5-Chat": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Message",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get SMS Messages": {
+      "main": [
+        [
+          {
+            "node": "Format Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Contact Data": {
+      "main": [
+        [
+          {
+            "node": "Gather Customer Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Opportunities by Date": {
+      "main": [
+        [
+          {
+            "node": "Limit 10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Get Opportunity Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Customer Notes": {
+      "main": [
+        [
+          {
+            "node": "Build User Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build User Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Message": {
+      "main": [
+        [
+          {
+            "node": "Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Conversation": {
+      "main": [
+        [
+          {
+            "node": "Get SMS Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate midnight UTC": {
+      "main": [
+        [
+          {
+            "node": "Update Last Message Sent Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Last Message Sent Date": {
+      "main": [
+        [
+          {
+            "node": "Prepare Event Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Opportunites": {
+      "main": [
+        [
+          {
+            "node": "Filter Opportunities by Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Message": {
+      "main": [
+        [
+          {
+            "node": "Calculate midnight UTC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Event Data": {
+      "main": [
+        [
+          {
+            "node": "Insert into Evals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gather Customer Data": {
+      "main": [
+        [
+          {
+            "node": "Find Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 10": {
+      "main": [
+        [
+          {
+            "node": "Get Contact Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": ""
+  }
+}

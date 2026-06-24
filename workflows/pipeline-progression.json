@@ -1,0 +1,524 @@
+{
+  "id": "TEMPLATE_WORKFLOW_ID",
+  "name": "Lead Nurture - Pipeline Progression",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "64ba822e-cacf-4d2a-ab6d-21cea783b9f6",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -272,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "pipelineStageId",
+              "value": "YOUR_ACTIVE_NURTURE_STAGE_ID"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "id": "8741efd3-1464-4245-8b0d-ca1021372906",
+      "name": "Move to Active Nurture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        400,
+        -48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// UTC calculations to match stored entry dates\nconst ONE_DAY_MS = 24 * 60 * 60 * 1000;\nconst nowMs = Date.now();\n\n// Calculate today at midnight UTC\nconst todayMidnightUTC = Math.floor(nowMs / ONE_DAY_MS) * ONE_DAY_MS;\n\nconst thresholdDays = 16;\nconst cutoffMidnightUTC = todayMidnightUTC - (thresholdDays * ONE_DAY_MS);\n\nconst allItems = $input.all();\n\n// Flatten all opportunities from all pages\nconst allOpportunities = allItems.flatMap(item => \n  item.json?.opportunities || []\n);\n\n// Filter for eligible opportunities\nconst eligible = allOpportunities.filter(opp => {\n  const entryField = opp.customFields?.find(f => f.id === \"YOUR_ENTRY_DATE_FIELD_ID\");\n  if (!entryField?.fieldValueDate) return false;\n  \n  // Entry date is stored as midnight UTC\n  const entryMidnightUTC = entryField.fieldValueDate;\n  \n  // Keep if entry date is at or before cutoff (both UTC)\n  return entryMidnightUTC <= cutoffMidnightUTC;\n});\n\nconsole.log(`Processed ${allItems.length} pages with ${allOpportunities.length} total opportunities`);\nconsole.log(`Found ${eligible.length} opportunities ready to move to Active Nurture`);\n\nreturn eligible.map(opp => ({ json: opp }));"
+      },
+      "id": "12749020-f557-4ea8-afbb-89e615bb1afc",
+      "name": "Filter Active Nurture by Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// UTC calculations to match stored entry dates\nconst ONE_DAY_MS = 24 * 60 * 60 * 1000;\nconst nowMs = Date.now();\n\n// Calculate today at midnight UTC\nconst todayMidnightUTC = Math.floor(nowMs / ONE_DAY_MS) * ONE_DAY_MS;\n\nconst thresholdDays = 1;\nconst cutoffMidnightUTC = todayMidnightUTC - (thresholdDays * ONE_DAY_MS);\n\nconst allItems = $input.all();\n\n// Flatten all opportunities from all pages\nconst allOpportunities = allItems.flatMap(item => \n  item.json?.opportunities || []\n);\n\n// Filter for eligible opportunities\nconst eligible = allOpportunities.filter(opp => {\n  const entryField = opp.customFields?.find(f => f.id === \"YOUR_ENTRY_DATE_FIELD_ID\");\n  if (!entryField?.fieldValueDate) return false;\n  \n  // Entry date is stored as midnight UTC\n  const entryMidnightUTC = entryField.fieldValueDate;\n  \n  // Keep if entry date is at or before cutoff (both UTC)\n  return entryMidnightUTC <= cutoffMidnightUTC;\n});\n\nconsole.log(`Processed ${allItems.length} pages with ${allOpportunities.length} total opportunities`);\nconsole.log(`Found ${eligible.length} opportunities ready to move to Active Nurture`);\n\nreturn eligible.map(opp => ({ json: opp }));"
+      },
+      "id": "36adee15-3c46-447a-a245-b91c0d568d63",
+      "name": "Filter Immediate by Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "={{$vars.GHL_LOCATION_ID}}"
+            },
+            {
+              "name": "pipeline_stage_id",
+              "value": "YOUR_ACTIVE_NURTURE_STAGE_ID"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "startAfter",
+                    "value": "={{ $response.body.meta?.startAfter || '' }}"
+                  },
+                  {
+                    "name": "startAfterId",
+                    "value": "={{ $response.body.meta?.startAfterId || '' }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.meta || !$response.body.meta.startAfterId }}"
+            }
+          }
+        }
+      },
+      "id": "bc704c01-3a0b-4369-b797-f561ea0c7cf7",
+      "name": "Get Active Opportunites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "={{$vars.GHL_LOCATION_ID}}"
+            },
+            {
+              "name": "pipeline_stage_id",
+              "value": "YOUR_MONTHLY_STAGE_ID"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "startAfter",
+                    "value": "={{ $response.body.meta?.startAfter || '' }}"
+                  },
+                  {
+                    "name": "startAfterId",
+                    "value": "={{ $response.body.meta?.startAfterId || '' }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.meta || !$response.body.meta.startAfterId }}"
+            }
+          }
+        }
+      },
+      "id": "add78a1a-5d48-4982-b298-31f9c6915eb9",
+      "name": "Get Monthly Opportunites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// UTC calculations to match stored entry dates\nconst ONE_DAY_MS = 24 * 60 * 60 * 1000;\nconst nowMs = Date.now();\n\n// Calculate today at midnight UTC\nconst todayMidnightUTC = Math.floor(nowMs / ONE_DAY_MS) * ONE_DAY_MS;\n\nconst thresholdDays = 362;\nconst cutoffMidnightUTC = todayMidnightUTC - (thresholdDays * ONE_DAY_MS);\n\nconst allItems = $input.all();\n\n// Flatten all opportunities from all pages\nconst allOpportunities = allItems.flatMap(item => \n  item.json?.opportunities || []\n);\n\n// Filter for eligible opportunities\nconst eligible = allOpportunities.filter(opp => {\n  const entryField = opp.customFields?.find(f => f.id === \"YOUR_ENTRY_DATE_FIELD_ID\");\n  if (!entryField?.fieldValueDate) return false;\n  \n  // Entry date is stored as midnight UTC\n  const entryMidnightUTC = entryField.fieldValueDate;\n  \n  // Keep if entry date is at or before cutoff (both UTC)\n  return entryMidnightUTC <= cutoffMidnightUTC;\n});\n\nconsole.log(`Processed ${allItems.length} pages with ${allOpportunities.length} total opportunities`);\nconsole.log(`Found ${eligible.length} opportunities ready to move to Active Nurture`);\n\nreturn eligible.map(opp => ({ json: opp }));"
+      },
+      "id": "f19cda21-773f-4bf3-acc3-f74892835e2c",
+      "name": "Filter Monthly by Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "pipelineStageId",
+              "value": "YOUR_MONTHLY_STAGE_ID"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "id": "31045f43-b147-41a7-9a37-5673e1225598",
+      "name": "Move to Monthly",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        400,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://services.leadconnectorhq.com/opportunities/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "pipelineStageId",
+              "value": "YOUR_EMAIL_NURTURE_STAGE_ID"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "id": "fd4a31fa-9fee-4f1c-a40c-e3ed76761c33",
+      "name": "Move to Email Nurture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        400,
+        336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "=GET",
+        "url": "=https://services.leadconnectorhq.com/opportunities/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "location_id",
+              "value": "={{$vars.GHL_LOCATION_ID}}"
+            },
+            {
+              "name": "pipeline_stage_id",
+              "value": "YOUR_IMMEDIATE_STAGE_ID"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "startAfter",
+                    "value": "={{ $response.body.meta?.startAfter || '' }}"
+                  },
+                  {
+                    "name": "startAfterId",
+                    "value": "={{ $response.body.meta?.startAfterId || '' }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.meta || !$response.body.meta.startAfterId }}"
+            }
+          }
+        }
+      },
+      "id": "5664eeaf-9d18-4938-ae22-05bf260a99b5",
+      "name": "Get immediate Opportunites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        -48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GHL_CREDENTIAL_ID",
+          "name": "GHL API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Purpose\nAutomated time-based pipeline progression system. Moves opportunities between lead nurture pipelines based on days elapsed since `entry_date`.\n\n## Schedule\n⏰ **Daily at 6:30 AM CT** (11:45 AM UTC)\n\n## Pipeline Movements\n\n### Three Parallel Checks\n\n**1️⃣ Immediate → Active Nurture**\n- **Query:** All opportunities in \"Immediate\" stage\n- **Filter:** Entry date ≥ 1 day ago\n- **Action:** Move to \"Active Nurture\"\n- **Purpose:** Quick transition from instant response to scheduled nurture\n\n**2️⃣ Active Nurture → Monthly**\n- **Query:** All opportunities in \"Active Nurture\" stage\n- **Filter:** Entry date ≥ 16 days ago\n- **Action:** Move to \"Monthly\"\n- **Purpose:** Shift warm leads to long-term nurture after active period\n\n**3️⃣ Monthly → Email Nurture**\n- **Query:** All opportunities in \"Monthly\" stage\n- **Filter:** Entry date ≥ 362 days ago (~1 year)\n- **Action:** Move to \"Email Nurture Flow\"\n- **Purpose:** Transition cold leads out of SMS nurture after 1 year\n\n## How It Works\n\n### Single Timer Architecture\n- All progressions based on ONE field: `entry_date`\n- Field set once when opportunity first enters any {{YOUR_AI_AGENT_NAME}} pipeline\n- Never resets when moving between {{YOUR_AI_AGENT_NAME}} pipelines\n- Consistent timestamp across entire nurture lifecycle\n\n### Execution Flow\n1. Schedule trigger fires at 6:30 AM CT\n2. Three parallel branches query different pipeline stages\n3. Each branch:\n   - Fetches all opportunities (with pagination)\n   - Filters by `entry_date` threshold\n   - Moves eligible opportunities in batches (20 at a time, 2s interval)\n4. Logs summary: total opportunities, pages processed, moves completed\n\n### Batch Processing\n- **Batch size:** 20 opportunities per API call\n- **Interval:** 2 seconds between batches\n- **Purpose:** Prevents GHL API rate limiting\n\n## Thresholds Summary\n\n| Pipeline Stage | Days Since Entry | Next Stage |\n|----------------|------------------|------------|\n| Immediate | 1+ | Active Nurture |\n| Active Nurture | 16+ | Monthly |\n| Monthly | 362+ | Email Nurture |\n\n## Key Features\n✅ **Parallel execution** - all three checks run simultaneously  \n✅ **Pagination support** - handles large opportunity lists  \n✅ **Batch updates** - respects API rate limits  \n✅ **Single timer** - consistent tracking across pipelines  \n✅ **Non-destructive** - never resets `entry_date`",
+        "height": 1536,
+        "width": 560,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -928,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "6d5bebce-af83-4eb2-a2b9-c57f035223b5",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active Opportunites",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Monthly Opportunites",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get immediate Opportunites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Active Nurture by Date": {
+      "main": [
+        [
+          {
+            "node": "Move to Monthly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Immediate by Date": {
+      "main": [
+        [
+          {
+            "node": "Move to Active Nurture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Opportunites": {
+      "main": [
+        [
+          {
+            "node": "Filter Active Nurture by Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Monthly Opportunites": {
+      "main": [
+        [
+          {
+            "node": "Filter Monthly by Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Monthly by Date": {
+      "main": [
+        [
+          {
+            "node": "Move to Email Nurture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get immediate Opportunites": {
+      "main": [
+        [
+          {
+            "node": "Filter Immediate by Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": ""
+  }
+}
