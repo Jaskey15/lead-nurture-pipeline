@@ -60,7 +60,7 @@ flowchart TD
 
 ## The Monitoring and Eval Loop
 
-The part I am proudest of: the system measures itself. Every send and reply is logged to data tables that feed a dashboard tracking response rate by message-day, by weekday, and by pipeline stage. I used that loop to tune prompts and timing during the ramp-up phase, and weekly response rates climbed from roughly 8% to a 29.5% peak as the system improved. Instrumenting what you ship is the difference between "it runs" and "it gets better."
+The system measures itself. Every send and reply is logged to data tables that feed a dashboard tracking response rate by message-day, by weekday, and by pipeline stage. I used that loop to tune prompts and timing during the ramp-up phase, and weekly response rates climbed from roughly 8% to a 29.5% peak as the system improved. Instrumenting what you ship is the difference between "it runs" and "it gets better."
 
 ## Results
 
